@@ -11,10 +11,12 @@ warnings.filterwarnings('ignore', category=SourceChangeWarning)
 
 
 def _get_steganogan(args):
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     steganogan_kwargs = {
         'cuda': not args.cpu,
         'verbose': args.verbose
+        'device': device  # Pass the device to the model loading
     }
 
     if args.path:

@@ -71,15 +71,17 @@ def gaussian(window_size, sigma):
     https://en.wikipedia.org/wiki/Window_function#Gaussian_window
     """
     _exp = [exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)]
-    gauss = torch.Tensor(_exp)
+    gauss = torch.Tensor(_exp).to(device)  # Make sure the tensor is created on the correct device
+
+    
     return gauss / gauss.sum()
 
 
-def create_window(window_size, channel):
+def create_window(window_size, channel,device):
     _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
     _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
     window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()
-    return window
+    return window.to(device)
 
 
 def _ssim(img1, img2, window, window_size, channel, size_average=True):
@@ -113,7 +115,7 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
 
 def ssim(img1, img2, window_size=11, size_average=True):
     (_, channel, _, _) = img1.size()
-    window = create_window(window_size, channel)
+    window = create_window(window_size, channel, img1.device)
 
     if img1.is_cuda:
         window = window.cuda(img1.get_device())

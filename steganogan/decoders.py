@@ -6,11 +6,10 @@ from torch import nn
 
 class BasicDecoder(nn.Module):
     """
-    The BasicDecoder module takes an steganographic image and attempts to decode
-    the embedded data tensor.
+    Decodes a steganographic image to retrieve the embedded data tensor.
 
-    Input: (N, 3, H, W)
-    Output: (N, D, H, W)
+    Input: (N, 3, H, W) - Steganographic image
+    Output: (N, D, H, W) - Decoded data tensor
     """
 
     def _conv2d(self, in_channels, out_channels):
@@ -22,7 +21,7 @@ class BasicDecoder(nn.Module):
         )
 
     def _build_models(self):
-        self.layers = nn.Sequential(
+        return nn.Sequential(
             self._conv2d(3, self.hidden_size),
             nn.LeakyReLU(inplace=True),
             nn.BatchNorm2d(self.hidden_size),
@@ -38,76 +37,66 @@ class BasicDecoder(nn.Module):
             self._conv2d(self.hidden_size, self.data_depth)
         )
 
-        return [self.layers]
-
-    def __init__(self, data_depth, hidden_size):
+    def __init__(self, data_depth, hidden_size, device="cpu"):
         super().__init__()
         self.version = '1'
         self.data_depth = data_depth
         self.hidden_size = hidden_size
-
-        self._models = self._build_models()
-
-    def upgrade_legacy(self):
-        """Transform legacy pretrained models to make them usable with new code versions."""
-        # Transform to version 1
-        if not hasattr(self, 'version'):
-            self._models = [self.layers]
-
-            self.version = '1'
+        self.device = device
+        self.layers = self._build_models().to(device)
 
     def forward(self, x):
-        x = self._models[0](x)
+        # Ensure tensor has the expected shape (N, 3, H, W)
+        if len(x.shape) != 4:
+            raise ValueError(f"Expected input shape (N, 3, H, W), but got {x.shape}")
 
-        if len(self._models) > 1:
-            x_list = [x]
-            for layer in self._models[1:]:
-                x = layer(torch.cat(x_list, dim=1))
-                x_list.append(x)
-
-        return x
+        x = x.to(self.device)  # Move input to the correct device
+        return self.layers(x)
 
 
 class DenseDecoder(BasicDecoder):
     """
-    The DenseDecoder module takes an steganographic image and attempts to decode
-    the embedded data tensor.
+    Decodes a steganographic image using dense connections to retrieve the embedded data tensor.
 
-    Input: (N, 3, H, W)
-    Output: (N, D, H, W)
+    Input: (N, 3, H, W) - Steganographic image
+    Output: (N, D, H, W) - Decoded data tensor
     """
+
     def _build_models(self):
         self.conv1 = nn.Sequential(
             self._conv2d(3, self.hidden_size),
             nn.LeakyReLU(inplace=True),
             nn.BatchNorm2d(self.hidden_size)
-        )
+        ).to(self.device)
 
         self.conv2 = nn.Sequential(
             self._conv2d(self.hidden_size, self.hidden_size),
             nn.LeakyReLU(inplace=True),
             nn.BatchNorm2d(self.hidden_size)
-        )
+        ).to(self.device)
 
         self.conv3 = nn.Sequential(
             self._conv2d(self.hidden_size * 2, self.hidden_size),
             nn.LeakyReLU(inplace=True),
             nn.BatchNorm2d(self.hidden_size)
-        )
+        ).to(self.device)
 
-        self.conv4 = nn.Sequential(self._conv2d(self.hidden_size * 3, self.data_depth))
+        self.conv4 = nn.Sequential(
+            self._conv2d(self.hidden_size * 3, self.data_depth),
+            nn.Tanh()  # Ensure output is in the range [-1, 1]
+        ).to(self.device)
 
-        return self.conv1, self.conv2, self.conv3, self.conv4
+        return nn.ModuleList([self.conv1, self.conv2, self.conv3, self.conv4])
 
-    def upgrade_legacy(self):
-        """Transform legacy pretrained models to make them usable with new code versions."""
-        # Transform to version 1
-        if not hasattr(self, 'version'):
-            self._models = [
-                self.conv1,
-                self.conv2,
-                self.conv3,
-                self.conv4
-            ]
+    def forward(self, x):
+        # Ensure tensor has the expected shape (N, 3, H, W)
+        if len(x.shape) != 4:
+            raise ValueError(f"Expected input shape (N, 3, H, W), but got {x.shape}")
 
-            self.version = '1'
+        x = x.to(self.device)  # Move input to the correct device
+        x1 = self.conv1(x)
+        x2 = self.conv2(x1)
+        x3 = self.conv3(torch.cat([x1, x2], dim=1))
+        x4 = self.conv4(torch.cat([x1, x2, x3], dim=1))
+
+        return x4

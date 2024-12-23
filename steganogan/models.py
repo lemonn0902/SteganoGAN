@@ -45,42 +45,44 @@ class SteganoGAN(object):
 
         argspec = inspect.getfullargspec(class_or_instance.__init__).args
         argspec.remove('self')
-        init_args = {arg: kwargs[arg] for arg in argspec}
+        init_args = {arg: kwargs.get(arg) for arg in argspec}
+
 
         return class_or_instance(**init_args)
 
-    def set_device(self, cuda=True):
-        """Sets the torch device depending on whether cuda is avaiable or not."""
-        if cuda and torch.cuda.is_available():
-            self.cuda = True
-            self.device = torch.device('cuda')
-        else:
-            self.cuda = False
-            self.device = torch.device('cpu')
 
-        if self.verbose:
-            if not cuda:
+    def set_device(self, mps=True):
+        """Sets the torch device depending on whether MPS is available or not."""
+        if mps and torch.backends.mps.is_available():
+            self.device = torch.device('mps')
+            self.mps = True
+            if self.verbose:
+                print('Using MPS device')
+        else:
+            self.device = torch.device('cpu')
+            self.mps = False
+            if self.verbose:
                 print('Using CPU device')
-            elif not self.cuda:
-                print('CUDA is not available. Defaulting to CPU device')
-            else:
-                print('Using CUDA device')
 
         self.encoder.to(self.device)
         self.decoder.to(self.device)
         self.critic.to(self.device)
 
+
     def __init__(self, data_depth, encoder, decoder, critic,
-                 cuda=False, verbose=False, log_dir=None, **kwargs):
+                 cuda=False, mps=True, verbose=False, log_dir=None, **kwargs):
 
         self.verbose = verbose
 
         self.data_depth = data_depth
         kwargs['data_depth'] = data_depth
+
         self.encoder = self._get_instance(encoder, kwargs)
         self.decoder = self._get_instance(decoder, kwargs)
         self.critic = self._get_instance(critic, kwargs)
-        self.set_device(cuda)
+
+        self.set_device(mps=mps)
+        kwargs['device'] = self.device
 
         self.critic_optimizer = None
         self.decoder_optimizer = None
@@ -265,8 +267,8 @@ class SteganoGAN(object):
                 self._generate_samples(self.samples_path, sample_cover, epoch)
 
             # Empty cuda cache (this may help for memory leaks)
-            if self.cuda:
-                torch.cuda.empty_cache()
+            # if self.cuda:
+            #     torch.cuda.empty_cache()
 
             gc.collect()
 
@@ -340,15 +342,16 @@ class SteganoGAN(object):
         """Save the fitted model in the given path. Raises an exception if there is no model."""
         torch.save(self, path)
 
+    
     @classmethod
-    def load(cls, architecture=None, path=None, cuda=True, verbose=False):
+    def load(cls, architecture=None, path=None, mps=True, verbose=False):
         """Loads an instance of SteganoGAN for the given architecture (default pretrained models)
         or loads a pretrained model from a given path.
 
         Args:
             architecture(str): Name of a pretrained model to be loaded from the default models.
             path(str): Path to custom pretrained model. *Architecture must be None.
-            cuda(bool): Force loaded model to use cuda (if available).
+            mps(bool): Force loaded model to use MPS (if available).
             verbose(bool): Force loaded model to use or not verbose.
         """
 
@@ -368,5 +371,6 @@ class SteganoGAN(object):
         steganogan.decoder.upgrade_legacy()
         steganogan.critic.upgrade_legacy()
 
-        steganogan.set_device(cuda)
+        steganogan.set_device(mps)
         return steganogan
+

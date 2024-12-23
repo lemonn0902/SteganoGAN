@@ -5,11 +5,15 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
 
+
+import torch
+
 class CustomStegoDataset(Dataset):
-    def __init__(self, images_folder, messages_folder, metadata_file, transform=None):
+    def __init__(self, images_folder, messages_folder, metadata_file, transform=None, max_length=100):
         self.images_folder = images_folder
         self.messages_folder = messages_folder
         self.metadata = pd.read_csv(metadata_file)
+        self.max_length = max_length
         
         # Default transformation for grayscale images with resizing
         if transform is None:
@@ -30,12 +34,22 @@ class CustomStegoDataset(Dataset):
         if self.transform:
             image = self.transform(image)  # Apply transformations
         
-        # Load message
+        # Load and encode message
         message_path = os.path.join(self.messages_folder, self.metadata.iloc[idx]['message_files'])
         with open(message_path, 'r') as file:
             message = file.read()
+        
+        # Encode message as bytes and pad/truncate
+        encoded_message = list(message.encode())
+        if len(encoded_message) > self.max_length:
+            encoded_message = encoded_message[:self.max_length]  # Truncate
+        else:
+            encoded_message += [0] * (self.max_length - len(encoded_message))  # Pad
+        
+        message_tensor = torch.tensor(encoded_message, dtype=torch.float32)
 
-        return image, message
+        return image, message_tensor
+
 
 # Function to return train/validation loaders
 def get_loaders(images_folder, messages_folder, metadata_file, batch_size=8, shuffle=True):

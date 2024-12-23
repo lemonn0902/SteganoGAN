@@ -29,7 +29,7 @@ class ImageFolder(torchvision.datasets.ImageFolder):
 class DataLoader(torch.utils.data.DataLoader):
 
     def __init__(self, path, transform=None, limit=np.inf, shuffle=True,
-                 num_workers=8, batch_size=4, *args, **kwargs):
+                 num_workers=0, batch_size=4, *args, **kwargs): #changed num_workers from 8 to 0 for macos compatibility
 
         if transform is None:
             transform = DEFAULT_TRANSFORM
